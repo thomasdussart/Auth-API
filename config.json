@@ -1,0 +1,12 @@
+﻿{
+    "connectionString": "mongodb+srv://<username>:<password>@cluster0.cqbt4.mongodb.net/<dbname>?retryWrites=true&w=majority",
+    "secret": "r3IiZvC5KkOGeLb-YLlWKQ",
+    "emailFrom": "info@tamere.be",
+    "smtpOptions": {
+        "service": "Gmail",
+        "auth": {
+            "user": "",
+            "pass": ""
+        }
+}
+}
