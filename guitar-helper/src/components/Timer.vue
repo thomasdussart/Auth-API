@@ -1,93 +1,159 @@
 <template>
-  <v-card color="surface" rounded="xl" class="pa-4">
-    <v-card-title class="text-center text-h6 text-medium-emphasis mb-2">
-      <v-icon start color="primary">mdi-timer-outline</v-icon>
-      Timer
-    </v-card-title>
+  <div>
+    <v-row>
+      <!-- Timer column -->
+      <v-col :cols="exercise ? 12 : 12" :md="exercise ? 5 : 12">
+        <v-card color="surface" rounded="xl" class="pa-4">
+          <v-card-title class="text-center text-h6 text-medium-emphasis mb-2">
+            <v-icon start color="primary">mdi-timer-outline</v-icon>
+            Timer
+          </v-card-title>
 
-    <v-card-text>
-      <div class="d-flex justify-center mb-6">
-        <v-progress-circular
-          :model-value="progressPercent"
-          :color="isDone ? 'success' : isRunning ? 'primary' : 'surface-variant'"
-          size="180"
-          width="8"
-          bg-color="surface-variant"
-        >
-          <div class="text-center">
-            <div class="text-h3 font-weight-bold" style="font-variant-numeric: tabular-nums;">
-              {{ display }}
+          <v-card-text>
+            <div class="d-flex justify-center mb-6">
+              <v-progress-circular
+                :model-value="progressPercent"
+                :color="isDone ? 'success' : isRunning ? 'primary' : 'surface-variant'"
+                size="180"
+                width="8"
+                bg-color="surface-variant"
+              >
+                <div class="text-center">
+                  <div class="text-h3 font-weight-bold" style="font-variant-numeric: tabular-nums;">
+                    {{ display }}
+                  </div>
+                  <div v-if="isDone" class="text-caption text-success font-weight-bold">Terminé !</div>
+                  <div v-else class="text-caption text-medium-emphasis">{{ tempoLabel }}</div>
+                </div>
+              </v-progress-circular>
             </div>
-            <div v-if="isDone" class="text-caption text-success font-weight-bold">Terminé !</div>
-            <div v-else class="text-caption text-medium-emphasis">{{ tempoLabel }}</div>
-          </div>
-        </v-progress-circular>
-      </div>
 
-      <v-btn-toggle v-model="mode" mandatory color="primary" density="comfortable" class="mb-5 d-flex justify-center" rounded="lg">
-        <v-btn value="countdown" prepend-icon="mdi-timer-sand">Compte à rebours</v-btn>
-        <v-btn value="stopwatch" prepend-icon="mdi-timer">Chronomètre</v-btn>
-      </v-btn-toggle>
+            <v-btn-toggle v-model="mode" mandatory color="primary" density="comfortable" class="mb-5 d-flex justify-center" rounded="lg">
+              <v-btn value="countdown" prepend-icon="mdi-timer-sand">Compte à rebours</v-btn>
+              <v-btn value="stopwatch" prepend-icon="mdi-timer">Chronomètre</v-btn>
+            </v-btn-toggle>
 
-      <div v-if="mode === 'countdown'">
-        <div class="d-flex align-center justify-center gap-4 mb-4">
-          <div class="text-center">
-            <div class="text-caption text-medium-emphasis mb-2">MINUTES</div>
+            <div v-if="mode === 'countdown'">
+              <div class="d-flex align-center justify-center gap-4 mb-4">
+                <div class="text-center">
+                  <div class="text-caption text-medium-emphasis mb-2">MINUTES</div>
+                  <div class="d-flex align-center gap-2">
+                    <v-btn icon="mdi-minus" variant="tonal" size="small" @click="adjustTime('min', -1)" />
+                    <span class="text-h5 font-weight-bold" style="min-width:40px;text-align:center">
+                      {{ String(targetMin).padStart(2,'0') }}
+                    </span>
+                    <v-btn icon="mdi-plus" variant="tonal" size="small" @click="adjustTime('min', 1)" />
+                  </div>
+                </div>
+                <div class="text-h4 text-medium-emphasis mt-4">:</div>
+                <div class="text-center">
+                  <div class="text-caption text-medium-emphasis mb-2">SECONDES</div>
+                  <div class="d-flex align-center gap-2">
+                    <v-btn icon="mdi-minus" variant="tonal" size="small" @click="adjustTime('sec', -10)" />
+                    <span class="text-h5 font-weight-bold" style="min-width:40px;text-align:center">
+                      {{ String(targetSec).padStart(2,'0') }}
+                    </span>
+                    <v-btn icon="mdi-plus" variant="tonal" size="small" @click="adjustTime('sec', 10)" />
+                  </div>
+                </div>
+              </div>
+
+              <div class="d-flex flex-wrap justify-center gap-2 mb-4">
+                <v-chip
+                  v-for="p in presets"
+                  :key="p.label"
+                  @click="applyPreset(p)"
+                  variant="outlined"
+                  color="primary"
+                  size="small"
+                  class="cursor-pointer"
+                >{{ p.label }}</v-chip>
+              </div>
+            </div>
+
+            <div class="d-flex justify-center align-center gap-4">
+              <v-btn icon="mdi-restore" variant="tonal" size="large" @click="reset" />
+              <v-btn
+                :icon="isRunning ? 'mdi-pause' : 'mdi-play'"
+                color="primary"
+                size="x-large"
+                @click="toggle"
+                rounded="circle"
+              />
+            </div>
+          </v-card-text>
+        </v-card>
+      </v-col>
+
+      <!-- Exercise context column -->
+      <v-col v-if="exercise" cols="12" md="7">
+        <v-card color="surface" rounded="xl" class="pa-4 h-100">
+          <v-card-title class="d-flex align-center justify-space-between mb-1">
             <div class="d-flex align-center gap-2">
-              <v-btn icon="mdi-minus" variant="tonal" size="small" @click="adjustTime('min', -1)" />
-              <span class="text-h5 font-weight-bold" style="min-width:40px;text-align:center">
-                {{ String(targetMin).padStart(2,'0') }}
-              </span>
-              <v-btn icon="mdi-plus" variant="tonal" size="small" @click="adjustTime('min', 1)" />
+              <v-icon color="primary" size="small">mdi-music-note-eighth</v-icon>
+              <span class="text-body-1 font-weight-bold">{{ exercise.name }}</span>
             </div>
-          </div>
-          <div class="text-h4 text-medium-emphasis mt-4">:</div>
-          <div class="text-center">
-            <div class="text-caption text-medium-emphasis mb-2">SECONDES</div>
-            <div class="d-flex align-center gap-2">
-              <v-btn icon="mdi-minus" variant="tonal" size="small" @click="adjustTime('sec', -10)" />
-              <span class="text-h5 font-weight-bold" style="min-width:40px;text-align:center">
-                {{ String(targetSec).padStart(2,'0') }}
-              </span>
-              <v-btn icon="mdi-plus" variant="tonal" size="small" @click="adjustTime('sec', 10)" />
+            <v-btn
+              icon="mdi-close"
+              variant="text"
+              size="small"
+              density="compact"
+              @click="$emit('clear-exercise')"
+            />
+          </v-card-title>
+
+          <v-card-text class="pa-0 pt-2">
+            <!-- BPM info -->
+            <div class="d-flex gap-3 mb-4">
+              <v-chip size="small" :color="difficultyColor(exercise.difficulty)" variant="tonal" prepend-icon="mdi-signal">
+                {{ exercise.difficulty }}
+              </v-chip>
+              <v-chip size="small" color="surface-variant" variant="flat" prepend-icon="mdi-timer-outline">
+                {{ exercise.duration }}
+              </v-chip>
+              <v-chip size="small" color="surface-variant" variant="flat" prepend-icon="mdi-metronome">
+                {{ exercise.startBpm }} → {{ exercise.targetBpm }} BPM
+              </v-chip>
             </div>
-          </div>
-        </div>
 
-        <div class="d-flex flex-wrap justify-center gap-2 mb-4">
-          <v-chip
-            v-for="p in presets"
-            :key="p.label"
-            @click="applyPreset(p)"
-            variant="outlined"
-            color="primary"
-            size="small"
-            class="cursor-pointer"
-          >{{ p.label }}</v-chip>
-        </div>
-      </div>
+            <p class="text-body-2 text-medium-emphasis mb-4">{{ exercise.description }}</p>
 
-      <div class="d-flex justify-center align-center gap-4">
-        <v-btn
-          icon="mdi-restore"
-          variant="tonal"
-          size="large"
-          @click="reset"
-        />
-        <v-btn
-          :icon="isRunning ? 'mdi-pause' : 'mdi-play'"
-          color="primary"
-          size="x-large"
-          @click="toggle"
-          rounded="circle"
-        />
-      </div>
-    </v-card-text>
-  </v-card>
+            <!-- Instructions -->
+            <div class="instructions-card pa-3 rounded-lg mb-4">
+              <div class="text-caption text-primary text-uppercase font-weight-bold mb-3 tracking-wide">
+                <v-icon size="x-small" class="mr-1">mdi-format-list-numbered</v-icon>Instructions
+              </div>
+              <ol class="pl-4">
+                <li
+                  v-for="(step, i) in exercise.steps"
+                  :key="i"
+                  class="text-body-2 text-white mb-2"
+                >{{ step }}</li>
+              </ol>
+            </div>
+
+            <!-- Tab -->
+            <div v-if="exercise.tab" class="tab-card pa-3 rounded-lg">
+              <div class="text-caption text-primary text-uppercase font-weight-bold mb-2 tracking-wide">
+                <v-icon size="x-small" class="mr-1">mdi-music</v-icon>Tablature
+              </div>
+              <pre class="tab-display">{{ exercise.tab }}</pre>
+            </div>
+          </v-card-text>
+        </v-card>
+      </v-col>
+    </v-row>
+  </div>
 </template>
 
 <script setup>
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
+
+const props = defineProps({
+  exercise: { type: Object, default: null },
+})
+
+defineEmits(['clear-exercise'])
 
 const mode = ref('countdown')
 const targetMin = ref(5)
@@ -104,6 +170,18 @@ const presets = [
   { label: '15 min', min: 15, sec: 0 },
   { label: '30 min', min: 30, sec: 0 },
 ]
+
+// Auto-configure timer when an exercise is passed
+watch(() => props.exercise, (ex) => {
+  if (!ex) return
+  reset()
+  mode.value = 'countdown'
+  const match = ex.duration.match(/(\d+)/)
+  if (match) {
+    targetMin.value = parseInt(match[1])
+    targetSec.value = 0
+  }
+}, { immediate: true })
 
 const totalTarget = computed(() => targetMin.value * 60 + targetSec.value)
 
@@ -127,7 +205,6 @@ const tempoLabel = computed(() => {
   return `${Math.ceil(rem / 60)} min restantes`
 })
 
-function setMode(m) { mode.value = m; reset() }
 function adjustTime(unit, delta) {
   if (isRunning.value) return
   if (unit === 'min') targetMin.value = Math.max(0, Math.min(99, targetMin.value + delta))
@@ -167,5 +244,36 @@ function playDone() {
     osc.start(); osc.stop(ctx.currentTime + 0.8)
   } catch {}
 }
+
+function difficultyColor(d) {
+  return d === 'Débutant' ? 'success' : d === 'Intermédiaire' ? 'warning' : 'error'
+}
+
 onUnmounted(() => clearInterval(interval))
 </script>
+
+<style scoped>
+.cursor-pointer { cursor: pointer; }
+
+.instructions-card {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(232, 168, 32, 0.25);
+}
+
+.tab-card {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(232, 168, 32, 0.3);
+}
+
+.tab-display {
+  font-family: 'Courier New', monospace;
+  font-size: 0.85rem;
+  color: #e8c870;
+  white-space: pre;
+  overflow-x: auto;
+  line-height: 1.8;
+}
+
+.tracking-wide { letter-spacing: 0.08em; }
+.h-100 { height: 100%; }
+</style>

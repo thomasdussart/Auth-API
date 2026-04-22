@@ -81,19 +81,21 @@
 
             <p class="text-body-2 text-medium-emphasis mb-4">{{ selectedExercise.description }}</p>
 
-            <v-card variant="tonal" color="surface-variant" rounded="lg" class="pa-3 mb-4">
-              <div class="text-caption text-medium-emphasis text-uppercase mb-2 tracking-wide">Instructions</div>
-              <ol class="text-body-2 pl-4">
-                <li v-for="(step, i) in selectedExercise.steps" :key="i" class="mb-1">{{ step }}</li>
+            <div class="instructions-card pa-3 rounded-lg mb-4">
+              <div class="text-caption text-primary text-uppercase font-weight-bold mb-3 tracking-wide">
+                <v-icon size="x-small" class="mr-1">mdi-format-list-numbered</v-icon>Instructions
+              </div>
+              <ol class="pl-4">
+                <li v-for="(step, i) in selectedExercise.steps" :key="i" class="text-body-2 text-white mb-2">{{ step }}</li>
               </ol>
-            </v-card>
+            </div>
 
-            <v-card v-if="selectedExercise.tab" variant="outlined" rounded="lg" class="pa-3 mb-4">
-              <div class="text-caption text-medium-emphasis text-uppercase mb-2 tracking-wide">
+            <div v-if="selectedExercise.tab" class="tab-card pa-3 rounded-lg mb-4">
+              <div class="text-caption text-primary text-uppercase font-weight-bold mb-2 tracking-wide">
                 <v-icon size="x-small" class="mr-1">mdi-music</v-icon>Tablature
               </div>
               <pre class="tab-display">{{ selectedExercise.tab }}</pre>
-            </v-card>
+            </div>
 
             <v-card variant="tonal" color="primary" rounded="lg" class="pa-3 mb-4">
               <v-row>
@@ -306,14 +308,26 @@ function difficultyIcon(d) {
 
 <style scoped>
 .exercise-list { background: transparent !important; }
+
+.instructions-card {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(232, 168, 32, 0.25);
+}
+
+.tab-card {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(232, 168, 32, 0.3);
+}
+
 .tab-display {
   font-family: 'Courier New', monospace;
-  font-size: 0.8rem;
-  color: rgb(var(--v-theme-primary));
+  font-size: 0.85rem;
+  color: #e8c870;
   white-space: pre;
   overflow-x: auto;
-  line-height: 1.6;
+  line-height: 1.8;
 }
+
 .tracking-wide { letter-spacing: 0.08em; }
 .exercise-detail { height: 100%; }
 </style>

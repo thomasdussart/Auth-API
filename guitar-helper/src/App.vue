@@ -64,7 +64,9 @@
               <component
                 :is="currentComponent"
                 :key="activeTab"
+                v-bind="activeTab === 'timer' ? { exercise: activeExercise } : {}"
                 @start-exercise="handleStartExercise"
+                @clear-exercise="activeExercise = null"
               />
             </Transition>
           </v-col>
@@ -93,6 +95,7 @@ import LessonSearch from './components/LessonSearch.vue'
 
 const activeTab = ref('exercises')
 const rail = ref(false)
+const activeExercise = ref(null)
 
 const snackbar = ref({ show: false, text: '', color: 'primary' })
 
@@ -138,6 +141,7 @@ const currentTab = computed(() => tabs.find(t => t.value === activeTab.value))
 const currentComponent = computed(() => currentTab.value?.component)
 
 function handleStartExercise(exercise) {
+  activeExercise.value = exercise
   activeTab.value = 'timer'
   snackbar.value = {
     show: true,
