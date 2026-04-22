@@ -89,6 +89,7 @@ import Timer from './components/Timer.vue'
 import Metronome from './components/Metronome.vue'
 import Tuner from './components/Tuner.vue'
 import Exercises from './components/Exercises.vue'
+import LessonSearch from './components/LessonSearch.vue'
 
 const activeTab = ref('exercises')
 const rail = ref(false)
@@ -123,6 +124,13 @@ const tabs = [
     icon: 'mdi-timer-outline',
     subtitle: 'Planifiez et chronométrez vos sessions de pratique',
     component: markRaw(Timer),
+  },
+  {
+    value: 'lessons',
+    label: 'Leçons YouTube',
+    icon: 'mdi-youtube',
+    subtitle: 'Recherchez des tutoriels de guitare sur YouTube',
+    component: markRaw(LessonSearch),
   },
 ]
 
