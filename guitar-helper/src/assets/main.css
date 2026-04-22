@@ -1,0 +1,11 @@
+:root {
+  --v-theme-background: #0f0f14;
+}
+
+html, body {
+  font-family: 'Roboto', system-ui, sans-serif;
+}
+
+input[type="range"] {
+  cursor: pointer;
+}
