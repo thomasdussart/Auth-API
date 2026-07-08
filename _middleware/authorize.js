@@ -1,11 +1,11 @@
 const { expressjwt: jwt } = require('express-jwt');
-const { secret } = require('config.json');
+const { secret } = require('_helpers/config');
 const db = require('_helpers/db');
 
 module.exports = authorize;
 
 function authorize(roles = []) {
-    // roles param can be a single role string (e.g. Role.User or 'User') 
+    // roles param can be a single role string (e.g. Role.User or 'User')
     // or an array of roles (e.g. [Role.Admin, Role.User] or ['Admin', 'User'])
     if (typeof roles === 'string') {
         roles = [roles];
@@ -18,7 +18,6 @@ function authorize(roles = []) {
         // authorize based on user role
         async (req, res, next) => {
             const account = await db.Account.findById(req.auth.id);
-            const refreshTokens = await db.RefreshToken.find({ account: account.id });
 
             if (!account || (roles.length && !roles.includes(account.role))) {
                 // account no longer exists or role not authorized
@@ -27,7 +26,10 @@ function authorize(roles = []) {
 
             // authentication and authorization successful
             req.auth.role = account.role;
-            req.auth.ownsToken = token => !!refreshTokens.find(x => x.token === token);
+            // vérification à la demande : évite de charger tous les refresh
+            // tokens du compte à chaque requête autorisée
+            req.auth.ownsToken = async token =>
+                !!(await db.RefreshToken.exists({ account: account.id, token }));
             next();
         }
     ];

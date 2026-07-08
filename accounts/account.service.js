@@ -1,10 +1,14 @@
-﻿const config = require('config.json');
+﻿const config = require('_helpers/config');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const crypto = require("crypto");
 const sendEmail = require('_helpers/send-email');
 const db = require('_helpers/db');
 const Role = require('_helpers/role');
+
+// Hash factice comparé quand le compte n'existe pas, pour que la durée de
+// réponse ne révèle pas si un email est enregistré (attaque par timing)
+const DUMMY_HASH = bcrypt.hashSync(crypto.randomBytes(16).toString('hex'), 10);
 
 module.exports = {
     authenticate,
@@ -25,7 +29,10 @@ module.exports = {
 async function authenticate({ email, password, ipAddress }) {
     const account = await db.Account.findOne({ email });
 
-    if (!account || !account.isVerified || !bcrypt.compareSync(password, account.passwordHash)) {
+    // comparaison toujours exécutée (hash factice si compte inconnu) pour un temps de réponse constant
+    const passwordOk = await bcrypt.compare(password, account ? account.passwordHash : DUMMY_HASH);
+
+    if (!account || !account.isVerified || !passwordOk) {
         throw 'Email or password is incorrect';
     }
 
@@ -92,7 +99,7 @@ async function register(params, origin) {
     account.verificationToken = randomTokenString();
 
     // hash password
-    account.passwordHash = hash(params.password);
+    account.passwordHash = await hash(params.password);
 
     // save account
     await account.save();
@@ -146,7 +153,7 @@ async function resetPassword({ token, password }) {
     if (!account) throw 'Invalid token';
 
     // update password and remove reset token
-    account.passwordHash = hash(password);
+    account.passwordHash = await hash(password);
     account.passwordReset = Date.now();
     account.resetToken = undefined;
     await account.save();
@@ -172,7 +179,7 @@ async function create(params) {
     account.verified = Date.now();
 
     // hash password
-    account.passwordHash = hash(params.password);
+    account.passwordHash = await hash(params.password);
 
     // save account
     await account.save();
@@ -190,7 +197,9 @@ async function update(id, params) {
 
     // hash password if it was entered
     if (params.password) {
-        params.passwordHash = hash(params.password);
+        params.passwordHash = await hash(params.password);
+        delete params.password;
+        delete params.confirmPassword;
     }
 
     // copy params to account and save
@@ -216,13 +225,16 @@ async function getAccount(id) {
 }
 
 async function getRefreshToken(token) {
+    // sans ce garde, un token undefined/vide donnerait findOne({}) :
+    // Mongoose ignore les valeurs undefined et renverrait le premier token de la base
+    if (!token || typeof token !== 'string') throw 'Invalid token';
     const refreshToken = await db.RefreshToken.findOne({ token }).populate('account');
     if (!refreshToken || !refreshToken.isActive) throw 'Invalid token';
     return refreshToken;
 }
 
 function hash(password) {
-    return bcrypt.hashSync(password, 10);
+    return bcrypt.hash(password, 10);
 }
 
 function generateJwtToken(account) {
