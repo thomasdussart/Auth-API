@@ -1,6 +1,11 @@
-const config = require('config.json');
+const config = require('_helpers/config');
 const mongoose = require('mongoose');
-mongoose.connect(process.env.MONGODB_URI || config.connectionString);
+
+mongoose.connect(config.connectionString)
+    .catch(err => {
+        console.error('MongoDB connection error: ' + err.message);
+        process.exit(1);
+    });
 
 module.exports = {
     Account: require('accounts/account.model'),

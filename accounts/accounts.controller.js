@@ -60,21 +60,24 @@ function revokeTokenSchema(req, res, next) {
     validateRequest(req, next, schema);
 }
 
-function revokeToken(req, res, next) {
-    // accept token from request body or cookie
-    const token = req.body.token || req.cookies.refreshToken;
-    const ipAddress = req.ip;
+async function revokeToken(req, res, next) {
+    try {
+        // accept token from request body or cookie
+        const token = req.body.token || req.cookies.refreshToken;
+        const ipAddress = req.ip;
 
-    if (!token) return res.status(400).json({ message: 'Token is required' });
+        if (!token) return res.status(400).json({ message: 'Token is required' });
 
-    // users can revoke their own tokens and admins can revoke any tokens
-    if (!req.auth.ownsToken(token) && req.auth.role !== Role.Admin) {
-        return res.status(401).json({ message: 'Unauthorized' });
+        // users can revoke their own tokens and admins can revoke any tokens
+        if (req.auth.role !== Role.Admin && !(await req.auth.ownsToken(token))) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+
+        await accountService.revokeToken({ token, ipAddress });
+        res.json({ message: 'Token revoked' });
+    } catch (err) {
+        next(err);
     }
-
-    accountService.revokeToken({ token, ipAddress })
-        .then(() => res.json({ message: 'Token revoked' }))
-        .catch(next);
 }
 
 function registerSchema(req, res, next) {
@@ -231,9 +234,14 @@ function _delete(req, res, next) {
 
 function setTokenCookie(res, token) {
     // create cookie with refresh token that expires in 7 days
+    const isProd = process.env.NODE_ENV === 'production';
     const cookieOptions = {
         httpOnly: true,
-        expires: new Date(Date.now() + 7*24*60*60*1000)
+        expires: new Date(Date.now() + 7*24*60*60*1000),
+        // en prod : HTTPS obligatoire, et SameSite=None pour autoriser
+        // un front hébergé sur un autre domaine (CORS avec credentials)
+        secure: isProd,
+        sameSite: isProd ? 'none' : 'lax'
     };
     res.cookie('refreshToken', token, cookieOptions);
 }
