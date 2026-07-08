@@ -32,7 +32,6 @@
           min="30" max="250" step="1"
           color="primary"
           hide-details
-          @update:model-value="restart"
         />
         <v-btn variant="tonal" density="compact" size="small" @click="adjustBpm(1)">+1</v-btn>
         <v-btn variant="tonal" density="compact" @click="adjustBpm(10)">+10</v-btn>
@@ -140,15 +139,17 @@ function setSubdivision(s) {
   subdivision.value = s
   if (isPlaying.value) restart()
 }
+// Le scheduler lit bpm à chaque tick : pas besoin de redémarrer la mesure
+// quand le tempo change, le nouveau tempo s'applique au battement suivant.
 function adjustBpm(delta) {
   bpm.value = Math.max(30, Math.min(250, bpm.value + delta))
-  restart()
 }
 function applyTempo(t) {
-  bpm.value = Math.round((t.min + t.max) / 2); restart()
+  bpm.value = Math.round((t.min + t.max) / 2)
 }
 
 function scheduleNote(time, isAccent, isSubdiv) {
+  if (volume.value === 0) return
   const osc = audioCtx.createOscillator()
   const gain = audioCtx.createGain()
   osc.connect(gain); gain.connect(audioCtx.destination)
@@ -198,7 +199,11 @@ function stop() {
 }
 function restart() { if (isPlaying.value) { stop(); start() } }
 function toggle() { isPlaying.value ? stop() : start() }
-onUnmounted(stop)
+onUnmounted(() => {
+  stop()
+  audioCtx?.close()
+  audioCtx = null
+})
 </script>
 
 <style scoped>
@@ -218,7 +223,5 @@ onUnmounted(stop)
   background: rgb(var(--v-theme-primary));
   box-shadow: 0 0 18px rgba(232,168,32,0.8);
 }
-.tracking-wide { letter-spacing: 0.08em; }
 .tempo-chip { font-size: 0.78rem; }
-.cursor-pointer { cursor: pointer; }
 </style>

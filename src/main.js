@@ -1,14 +1,13 @@
 import { createApp } from 'vue'
 import { createVuetify } from 'vuetify'
-import * as components from 'vuetify/components'
-import * as directives from 'vuetify/directives'
 import '@mdi/font/css/materialdesignicons.css'
 import 'vuetify/styles'
+import './assets/main.css'
 import App from './App.vue'
 
+// Pas d'import global des composants : vite-plugin-vuetify (autoImport)
+// n'inclut dans le bundle que ceux réellement utilisés.
 const vuetify = createVuetify({
-  components,
-  directives,
   theme: {
     defaultTheme: 'dark',
     themes: {

@@ -2,7 +2,7 @@
   <div>
     <v-row>
       <!-- Timer column -->
-      <v-col :cols="exercise ? 12 : 12" :md="exercise ? 5 : 12">
+      <v-col cols="12" :md="exercise ? 5 : 12">
         <v-card color="surface" rounded="xl" class="pa-4">
           <v-card-title class="text-center text-h6 text-medium-emphasis mb-2">
             <v-icon start color="primary">mdi-timer-outline</v-icon>
@@ -103,42 +103,19 @@
           </v-card-title>
 
           <v-card-text class="pa-0 pt-2">
-            <!-- BPM info -->
             <div class="d-flex gap-3 mb-4">
               <v-chip size="small" :color="difficultyColor(exercise.difficulty)" variant="tonal" prepend-icon="mdi-signal">
                 {{ exercise.difficulty }}
               </v-chip>
               <v-chip size="small" color="surface-variant" variant="flat" prepend-icon="mdi-timer-outline">
-                {{ exercise.duration }}
+                {{ exercise.durationMin }} min
               </v-chip>
               <v-chip size="small" color="surface-variant" variant="flat" prepend-icon="mdi-metronome">
                 {{ exercise.startBpm }} → {{ exercise.targetBpm }} BPM
               </v-chip>
             </div>
 
-            <p class="text-body-2 text-medium-emphasis mb-4">{{ exercise.description }}</p>
-
-            <!-- Instructions -->
-            <div class="instructions-card pa-3 rounded-lg mb-4">
-              <div class="text-caption text-primary text-uppercase font-weight-bold mb-3 tracking-wide">
-                <v-icon size="x-small" class="mr-1">mdi-format-list-numbered</v-icon>Instructions
-              </div>
-              <ol class="pl-4">
-                <li
-                  v-for="(step, i) in exercise.steps"
-                  :key="i"
-                  class="text-body-2 text-white mb-2"
-                >{{ step }}</li>
-              </ol>
-            </div>
-
-            <!-- Tab -->
-            <div v-if="exercise.tab" class="tab-card pa-3 rounded-lg">
-              <div class="text-caption text-primary text-uppercase font-weight-bold mb-2 tracking-wide">
-                <v-icon size="x-small" class="mr-1">mdi-music</v-icon>Tablature
-              </div>
-              <pre class="tab-display">{{ exercise.tab }}</pre>
-            </div>
+            <ExerciseInfo :exercise="exercise" />
           </v-card-text>
         </v-card>
       </v-col>
@@ -148,6 +125,8 @@
 
 <script setup>
 import { ref, computed, watch, onUnmounted } from 'vue'
+import ExerciseInfo from './ExerciseInfo.vue'
+import { difficultyColor } from '../data/exercises'
 
 const props = defineProps({
   exercise: { type: Object, default: null },
@@ -161,7 +140,13 @@ const targetSec = ref(0)
 const elapsed = ref(0)
 const isRunning = ref(false)
 const isDone = ref(false)
+
+// Chronométrage basé sur l'horloge (performance.now) plutôt qu'un compteur
+// setInterval : pas de dérive, et le temps reste juste même si le navigateur
+// throttle les timers en arrière-plan.
 let interval = null
+let startStamp = 0
+let accumulatedMs = 0
 
 const presets = [
   { label: '1 min', min: 1, sec: 0 },
@@ -176,12 +161,11 @@ watch(() => props.exercise, (ex) => {
   if (!ex) return
   reset()
   mode.value = 'countdown'
-  const match = ex.duration.match(/(\d+)/)
-  if (match) {
-    targetMin.value = parseInt(match[1])
-    targetSec.value = 0
-  }
+  targetMin.value = ex.durationMin
+  targetSec.value = 0
 }, { immediate: true })
+
+watch(mode, reset)
 
 const totalTarget = computed(() => targetMin.value * 60 + targetSec.value)
 
@@ -209,28 +193,43 @@ function adjustTime(unit, delta) {
   if (isRunning.value) return
   if (unit === 'min') targetMin.value = Math.max(0, Math.min(99, targetMin.value + delta))
   else targetSec.value = Math.max(0, Math.min(50, targetSec.value + delta))
-  elapsed.value = 0; isDone.value = false
+  accumulatedMs = 0; elapsed.value = 0; isDone.value = false
 }
 function applyPreset(p) {
   if (isRunning.value) return
   targetMin.value = p.min; targetSec.value = p.sec
-  elapsed.value = 0; isDone.value = false
+  accumulatedMs = 0; elapsed.value = 0; isDone.value = false
 }
+
+function tick() {
+  const ms = accumulatedMs + (performance.now() - startStamp)
+  elapsed.value = Math.floor(ms / 1000)
+  if (mode.value === 'countdown' && elapsed.value >= totalTarget.value) {
+    elapsed.value = totalTarget.value
+    pause()
+    isDone.value = true
+    playDone()
+  }
+}
+
 function toggle() {
   if (isDone.value) { reset(); return }
-  isRunning.value = !isRunning.value
-  if (isRunning.value) {
-    interval = setInterval(() => {
-      elapsed.value++
-      if (mode.value === 'countdown' && elapsed.value >= totalTarget.value) {
-        isRunning.value = false; isDone.value = true
-        clearInterval(interval); playDone()
-      }
-    }, 1000)
-  } else clearInterval(interval)
+  if (isRunning.value) pause()
+  else {
+    startStamp = performance.now()
+    interval = setInterval(tick, 250)
+    isRunning.value = true
+  }
+}
+function pause() {
+  if (isRunning.value) accumulatedMs += performance.now() - startStamp
+  clearInterval(interval)
+  isRunning.value = false
 }
 function reset() {
-  clearInterval(interval); isRunning.value = false; isDone.value = false; elapsed.value = 0
+  clearInterval(interval)
+  isRunning.value = false; isDone.value = false
+  accumulatedMs = 0; elapsed.value = 0
 }
 function playDone() {
   try {
@@ -241,39 +240,14 @@ function playDone() {
     osc.frequency.value = 880
     gain.gain.setValueAtTime(0.3, ctx.currentTime)
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8)
+    osc.onended = () => ctx.close()
     osc.start(); osc.stop(ctx.currentTime + 0.8)
   } catch {}
-}
-
-function difficultyColor(d) {
-  return d === 'Débutant' ? 'success' : d === 'Intermédiaire' ? 'warning' : 'error'
 }
 
 onUnmounted(() => clearInterval(interval))
 </script>
 
 <style scoped>
-.cursor-pointer { cursor: pointer; }
-
-.instructions-card {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(232, 168, 32, 0.25);
-}
-
-.tab-card {
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(232, 168, 32, 0.3);
-}
-
-.tab-display {
-  font-family: 'Courier New', monospace;
-  font-size: 0.85rem;
-  color: #e8c870;
-  white-space: pre;
-  overflow-x: auto;
-  line-height: 1.8;
-}
-
-.tracking-wide { letter-spacing: 0.08em; }
 .h-100 { height: 100%; }
 </style>

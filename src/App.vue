@@ -7,12 +7,9 @@
         </v-app-bar-title>
       </template>
       <template #append>
-        <v-chip color="primary" variant="tonal" size="small" prepend-icon="mdi-guitar-acoustic">
+        <v-chip color="primary" variant="tonal" size="small" prepend-icon="mdi-guitar-acoustic" class="mr-2">
           Pratique quotidienne
         </v-chip>
-        <v-btn icon class="ml-2" variant="text">
-          <v-icon>mdi-cog-outline</v-icon>
-        </v-btn>
       </template>
     </v-app-bar>
 
@@ -86,7 +83,7 @@
 </template>
 
 <script setup>
-import { ref, computed, shallowRef, markRaw } from 'vue'
+import { ref, computed, markRaw } from 'vue'
 import Timer from './components/Timer.vue'
 import Metronome from './components/Metronome.vue'
 import Tuner from './components/Tuner.vue'
@@ -145,7 +142,7 @@ function handleStartExercise(exercise) {
   activeTab.value = 'timer'
   snackbar.value = {
     show: true,
-    text: `Exercice lancé : ${exercise.name} — ${exercise.duration}`,
+    text: `Exercice lancé : ${exercise.name} — ${exercise.durationMin} min`,
     color: 'primary',
   }
 }
@@ -156,7 +153,4 @@ function handleStartExercise(exercise) {
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
 .v-application { background: #0f0f14 !important; }
-.gap-2 { gap: 8px; }
-.gap-3 { gap: 12px; }
-.gap-4 { gap: 16px; }
 </style>

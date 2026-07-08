@@ -23,7 +23,11 @@
             </a>
             → <strong>APIs & Services → YouTube Data API v3 → Credentials</strong>.
           </p>
-          <p class="text-caption text-medium-emphasis">Quota gratuit : ~100 recherches/jour.</p>
+          <p class="text-caption text-medium-emphasis mb-1">Quota gratuit : ~100 recherches/jour.</p>
+          <p class="text-caption text-medium-emphasis">
+            Conseil sécurité : restreignez la clé au référent HTTP de votre site et à l'API
+            « YouTube Data v3 » dans la console Google — la clé est stockée dans votre navigateur.
+          </p>
         </v-alert>
       </v-expand-transition>
 
@@ -70,6 +74,7 @@
               variant="outlined"
               density="compact"
               type="password"
+              autocomplete="off"
               prepend-inner-icon="mdi-lock-outline"
               placeholder="AIza..."
               hide-details
@@ -123,9 +128,10 @@
           <div class="player-wrapper">
             <iframe
               v-if="activeVideo"
-              :src="`https://www.youtube.com/embed/${activeVideo.videoId}?autoplay=1`"
+              :src="`https://www.youtube-nocookie.com/embed/${activeVideo.videoId}?autoplay=1&rel=0`"
               frameborder="0"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              referrerpolicy="strict-origin-when-cross-origin"
               allowfullscreen
             />
           </div>
@@ -240,7 +246,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 
 const query = ref('')
 const lastQuery = ref('')
@@ -289,7 +295,7 @@ function applyTag(tag) {
 }
 
 function parseDuration(iso) {
-  const m = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/)
+  const m = typeof iso === 'string' && iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/)
   if (!m) return ''
   const h = parseInt(m[1] || 0)
   const min = parseInt(m[2] || 0)
@@ -298,8 +304,35 @@ function parseDuration(iso) {
   return h ? `${h}:${pad(min)}:${pad(s)}` : `${min}:${pad(s)}`
 }
 
+// L'API YouTube renvoie les titres avec entités HTML encodées (&amp;#39; etc.)
+function decodeHtml(str) {
+  if (!str) return ''
+  return new DOMParser().parseFromString(str, 'text/html').documentElement.textContent || str
+}
+
+// Un videoId YouTube fait exactement 11 caractères [A-Za-z0-9_-] :
+// on valide avant de l'injecter dans l'URL de l'iframe.
+const VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/
+
+const API_BASE = 'https://www.googleapis.com/youtube/v3'
+let searchAbort = null
+
+async function fetchJson(endpoint, params, signal) {
+  const res = await fetch(`${API_BASE}/${endpoint}?${new URLSearchParams(params)}`, { signal })
+  const data = await res.json().catch(() => ({}))
+  if (data.error) throw new Error(`Erreur API : ${data.error.message}`)
+  if (!res.ok) throw new Error(`Erreur API : HTTP ${res.status}`)
+  return data
+}
+
 async function search() {
   if (!query.value.trim() || !apiKey.value) return
+  // Annule la recherche précédente : évite qu'une réponse lente
+  // vienne écraser les résultats d'une recherche plus récente.
+  searchAbort?.abort()
+  const ctrl = new AbortController()
+  searchAbort = ctrl
+
   loading.value = true
   searched.value = false
   error.value = ''
@@ -307,41 +340,44 @@ async function search() {
   lastQuery.value = query.value.trim()
 
   try {
-    const searchTerm = encodeURIComponent(`${lastQuery.value} guitar`)
-    const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${searchTerm}&type=video&maxResults=12&relevanceLanguage=fr&key=${apiKey.value}`
-    const searchRes = await fetch(searchUrl)
-    const searchData = await searchRes.json()
+    const searchData = await fetchJson('search', {
+      part: 'snippet',
+      q: `${lastQuery.value} guitar`,
+      type: 'video',
+      videoEmbeddable: 'true',
+      maxResults: '12',
+      relevanceLanguage: 'fr',
+      key: apiKey.value,
+    }, ctrl.signal)
 
-    if (searchData.error) {
-      error.value = `Erreur API : ${searchData.error.message}`
-      return
-    }
+    const items = (searchData.items || []).filter(i => VIDEO_ID_RE.test(i.id?.videoId || ''))
+    if (!items.length) return
 
-    const items = searchData.items || []
-    if (!items.length) { searched.value = true; return }
-
-    // Fetch durations via videos endpoint
-    const ids = items.map(i => i.id.videoId).join(',')
-    const detailUrl = `https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${ids}&key=${apiKey.value}`
-    const detailRes = await fetch(detailUrl)
-    const detailData = await detailRes.json()
+    const detailData = await fetchJson('videos', {
+      part: 'contentDetails',
+      id: items.map(i => i.id.videoId).join(','),
+      key: apiKey.value,
+    }, ctrl.signal)
     const durationMap = {}
     for (const v of (detailData.items || [])) {
-      durationMap[v.id] = parseDuration(v.contentDetails.duration)
+      durationMap[v.id] = parseDuration(v.contentDetails?.duration)
     }
 
     results.value = items.map(item => ({
       videoId: item.id.videoId,
-      title: item.snippet.title,
-      channel: item.snippet.channelTitle,
+      title: decodeHtml(item.snippet.title),
+      channel: decodeHtml(item.snippet.channelTitle),
       thumb: item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url,
       duration: durationMap[item.id.videoId] || '',
     }))
   } catch (e) {
-    error.value = `Erreur réseau : ${e.message}`
+    if (e.name === 'AbortError') return
+    error.value = e.message.startsWith('Erreur API') ? e.message : `Erreur réseau : ${e.message}`
   } finally {
-    loading.value = false
-    searched.value = true
+    if (searchAbort === ctrl) {
+      loading.value = false
+      searched.value = true
+    }
   }
 }
 
@@ -354,12 +390,11 @@ function closePlayer() {
   playerOpen.value = false
   setTimeout(() => { activeVideo.value = null }, 300)
 }
+
+onUnmounted(() => searchAbort?.abort())
 </script>
 
 <style scoped>
-.cursor-pointer { cursor: pointer; }
-.gap-2 { gap: 8px; }
-
 .thumb-wrap {
   position: relative;
 }

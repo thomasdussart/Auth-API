@@ -59,7 +59,7 @@
             :class="['string-btn', { active: closestString && closestString.name === s.name }]"
           >
             <div class="string-label">{{ s.name }}</div>
-            <div class="string-freq text-caption text-medium-emphasis">{{ s.freq }}Hz</div>
+            <div class="string-freq text-caption text-medium-emphasis">{{ Math.round(s.freq) }}Hz</div>
           </div>
         </div>
       </div>
@@ -92,16 +92,23 @@ let analyser = null
 let stream = null
 let animFrame = null
 const BUFFER_SIZE = 2048
+// Plage utile pour une guitare (E2 grave ≈ 82 Hz, harmoniques aiguës comprises)
+const MIN_FREQ = 50
+const MAX_FREQ = 1200
+// Buffers réutilisés d'une frame à l'autre pour éviter le GC en boucle rAF
+const sampleBuf = new Float32Array(BUFFER_SIZE)
+let corrBuf = null
+let silentFrames = 0
 
 const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B']
 
 const strings = [
-  { name: 'E2', freq: 82 },
+  { name: 'E2', freq: 82.41 },
   { name: 'A2', freq: 110 },
-  { name: 'D3', freq: 147 },
+  { name: 'D3', freq: 146.83 },
   { name: 'G3', freq: 196 },
-  { name: 'B3', freq: 247 },
-  { name: 'e4', freq: 330 },
+  { name: 'B3', freq: 246.94 },
+  { name: 'e4', freq: 329.63 },
 ]
 
 const closestString = computed(() => {
@@ -150,34 +157,34 @@ function freqToNote(freq) {
   return { name: `${note}${octave}`, cents }
 }
 
+// Autocorrélation restreinte aux périodes correspondant à [MIN_FREQ, MAX_FREQ] :
+// on ne calcule que les lags utiles au lieu de la corrélation complète en O(n²).
 function autocorrelate(buf, sampleRate) {
+  const n = buf.length
   let rms = 0
-  for (let i = 0; i < buf.length; i++) rms += buf[i] * buf[i]
-  rms = Math.sqrt(rms / buf.length)
+  for (let i = 0; i < n; i++) rms += buf[i] * buf[i]
+  rms = Math.sqrt(rms / n)
   if (rms < 0.01) return -1
 
-  let r1 = 0, r2 = buf.length - 1
-  const thresh = 0.2
-  for (let i = 0; i < buf.length / 2; i++) {
-    if (Math.abs(buf[i]) < thresh) { r1 = i; break }
+  const minLag = Math.floor(sampleRate / MAX_FREQ)
+  const maxLag = Math.min(n - 2, Math.ceil(sampleRate / MIN_FREQ))
+  if (!corrBuf || corrBuf.length < maxLag + 2) corrBuf = new Float32Array(maxLag + 2)
+
+  for (let lag = minLag - 1; lag <= maxLag + 1; lag++) {
+    let sum = 0
+    for (let i = 0; i < n - lag; i++) sum += buf[i] * buf[i + lag]
+    corrBuf[lag] = sum / (n - lag)
   }
-  for (let i = 1; i < buf.length / 2; i++) {
-    if (Math.abs(buf[buf.length - i]) < thresh) { r2 = buf.length - i; break }
+
+  let maxVal = -Infinity, maxPos = -1
+  for (let lag = minLag; lag <= maxLag; lag++) {
+    if (corrBuf[lag] > maxVal) { maxVal = corrBuf[lag]; maxPos = lag }
   }
-  const sliced = buf.slice(r1, r2)
-  const c = new Float32Array(sliced.length * 2)
-  for (let i = 0; i < sliced.length; i++) {
-    for (let j = 0; j < sliced.length; j++) c[i + j] += sliced[i] * sliced[j]
-  }
-  const corr = c.slice(sliced.length)
-  let d = 0
-  while (corr[d] > corr[d + 1]) d++
-  let maxVal = -1, maxPos = -1
-  for (let i = d; i < corr.length; i++) {
-    if (corr[i] > maxVal) { maxVal = corr[i]; maxPos = i }
-  }
+  if (maxPos <= 0 || maxVal <= 0) return -1
+
+  // Interpolation parabolique autour du pic pour une précision sub-échantillon
   let T0 = maxPos
-  const x1 = corr[T0 - 1], x2 = corr[T0], x3 = corr[T0 + 1]
+  const x1 = corrBuf[T0 - 1], x2 = corrBuf[T0], x3 = corrBuf[T0 + 1]
   const a = (x1 + x3 - 2 * x2) / 2
   const b = (x3 - x1) / 2
   if (a) T0 -= b / (2 * a)
@@ -185,25 +192,36 @@ function autocorrelate(buf, sampleRate) {
 }
 
 function detect() {
-  const buf = new Float32Array(BUFFER_SIZE)
-  analyser.getFloatTimeDomainData(buf)
-  const freq = autocorrelate(buf, audioCtx.sampleRate)
-  if (freq > 50 && freq < 2000) {
+  if (!analyser) return
+  analyser.getFloatTimeDomainData(sampleBuf)
+  const freq = autocorrelate(sampleBuf, audioCtx.sampleRate)
+  if (freq > MIN_FREQ && freq < MAX_FREQ) {
+    silentFrames = 0
     detectedFreq.value = freq
     const { name, cents } = freqToNote(freq)
     detectedNote.value = name
     centsOff.value = cents
+  } else if (++silentFrames > 45) {
+    // ~0,75 s sans signal : on efface l'affichage au lieu de figer la dernière note
+    detectedFreq.value = null; detectedNote.value = ''; centsOff.value = null
   }
   animFrame = requestAnimationFrame(detect)
 }
 
+function stopListening() {
+  isListening.value = false
+  cancelAnimationFrame(animFrame)
+  stream?.getTracks().forEach(t => t.stop())
+  stream = null
+  audioCtx?.close()
+  audioCtx = null
+  analyser = null
+  detectedFreq.value = null; detectedNote.value = ''; centsOff.value = null
+}
+
 async function toggleListen() {
   if (isListening.value) {
-    isListening.value = false
-    cancelAnimationFrame(animFrame)
-    stream?.getTracks().forEach(t => t.stop())
-    audioCtx?.close(); audioCtx = null
-    detectedFreq.value = null; detectedNote.value = ''; centsOff.value = null
+    stopListening()
     return
   }
   try {
@@ -214,17 +232,16 @@ async function toggleListen() {
     audioCtx.createMediaStreamSource(stream).connect(analyser)
     isListening.value = true
     error.value = ''
+    silentFrames = 0
     detect()
   } catch (e) {
-    error.value = `Accès micro refusé : ${e.message}`
+    error.value = e.name === 'NotAllowedError'
+      ? 'Accès micro refusé. Autorisez le microphone dans les réglages du navigateur.'
+      : `Impossible d'accéder au micro : ${e.message}`
   }
 }
 
-onUnmounted(() => {
-  cancelAnimationFrame(animFrame)
-  stream?.getTracks().forEach(t => t.stop())
-  audioCtx?.close()
-})
+onUnmounted(stopListening)
 </script>
 
 <style scoped>
@@ -237,7 +254,6 @@ onUnmounted(() => {
   letter-spacing: 2px;
   transition: color 0.15s;
 }
-.guitar-strings {}
 .string-btn {
   display: flex;
   flex-direction: column;
@@ -257,5 +273,4 @@ onUnmounted(() => {
   font-weight: 700;
 }
 .string-freq { font-size: 0.65rem; }
-.tracking-wide { letter-spacing: 0.08em; }
 </style>
